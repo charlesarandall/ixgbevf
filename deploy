@@ -1,0 +1,59 @@
+#!/bin/bash
+set -e          # crash on errors
+set -u          # crash on undefined variables
+set -o pipefail # crash when intermediate program in pipe fails
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
+
+VERSION="$(cat "$SCRIPT_DIR/VERSION")"
+
+
+# Download the file if it doesn't already exist
+TARGET_DIR="$SCRIPT_DIR/bin"
+TARGET_FILE="$TARGET_DIR/ixgbevf-$VERSION.tar.gz"
+if [[ ! -f "$TARGET_FILE" ]]; then
+  # wget on Windows has trouble with the "-O" option so change into the correct directory
+  mkdir -p "$SCRIPT_DIR/bin"
+  (cd "$SCRIPT_DIR/bin" && wget "http://downloads.sourceforge.net/project/e1000/ixgbevf%20stable/$VERSION/ixgbevf-$VERSION.tar.gz")
+fi
+
+
+# Initialize configuration vars
+GITHUB_RELEASE_TOOL_VERSION=0.5.2
+
+
+# Import GITHUB_USER, GITHUB_TOKEN
+source "$HOME/Private/github-private-repo-access-token"
+
+
+# Get the VERSION file to discover the current version to deploy
+VERSION="$(curl -sSL -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.VERSION.raw" https://api.github.com/repos/undeadlabs/ixgbevf/contents/VERSION)"
+VERSION="${VERSION%\\n}"
+
+
+# Install the github release tool
+if [[ ! -x tmp/github-release ]]; then
+  URL="https://github.com/aktau/github-release/releases/download/v${GITHUB_RELEASE_TOOL_VERSION}/linux-amd64-github-release.tar.bz2"
+  mkdir -p "tmp"
+  curl -LsS "$URL" | tar xj --strip-components=3 --directory tmp
+fi
+
+
+# Create release
+tmp/github-release release                  \
+    --user undeadlabs                       \
+    --repo ixgbevf                          \
+    --name "ixgbevf $VERSION"               \
+    --tag "$VERSION"                        \
+#                                           #
+
+
+# upload package file
+tmp/github-release upload                   \
+    --user undeadlabs                       \
+    --repo ixgbevf                          \
+    --file "$TARGET_FILE"                   \
+    --name "$(basename "$TARGET_FILE")"     \
+    --tag "$VERSION"                        \
+#                                           #
